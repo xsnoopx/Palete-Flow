@@ -567,7 +567,7 @@
 
       const seen = new Set();
       return out.filter(x => {
-        const key = x.location + "|" + (x.code || x.batch || x.no);
+        const key = normalizeLocationKey(x.location);
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -675,11 +675,18 @@
     }
 
     // Mescla dois conjuntos de itens extraídos (original + otimizada), sem duplicar
+    function normalizeLocationKey(location) {
+      return String(location || '')
+        .toUpperCase()
+        .replace(/[^0-9]/g, '');
+    }
+
     function mergeExtractedRows(preferred, fallback) {
       const seen = new Set();
       const out = [];
       [...preferred, ...fallback].forEach(x => {
-        const key = x.location + "|" + (x.code || x.batch || x.no);
+        const normalizedLocation = normalizeLocationKey(x.location);
+        const key = normalizedLocation || (x.code || x.batch || x.no);
         if (!seen.has(key)) { seen.add(key); out.push(x); }
       });
       return out;
@@ -738,16 +745,37 @@
     }
 
 
+    // A localização (rua/bloco/nível) identifica o item.
+    // Se a mesma foto/etiqueta for reconhecida novamente, não criamos
+    // outra linha para a mesma localização. A normalização também faz
+    // 02-165-03, 02/165/03 e "02 - 165 - 03" serem considerados iguais.
     function addRowsToState(rows) {
-      const keys = new Set(state.items.map(x => x.location + "|" + (x.code || x.batch || x.no)));
+      const keys = new Set(
+        state.items
+          .map(x => normalizeLocationKey(x.location))
+          .filter(Boolean)
+      );
+
+      let added = 0;
+      let duplicates = 0;
+
       (rows || []).forEach(x => {
-        const key = x.location + "|" + (x.code || x.batch || x.no);
+        const normalizedLocation = normalizeLocationKey(x.location);
+        const key = normalizedLocation || (x.code || x.batch || x.no);
+
+        if (!key) return;
+
         if (!keys.has(key)) {
           state.items.push({ ...x, id: uid(), done: false });
           keys.add(key);
+          added++;
+        } else {
+          duplicates++;
         }
       });
-      applySortAndSave();
+
+      if (added > 0 || duplicates > 0) applySortAndSave();
+      return { added, duplicates };
     }
 
     async function processQueueItem(img, onProgress) {
@@ -783,12 +811,14 @@
         img.status = 'done';
         img.result = rows;
 
-        addRowsToState(rows);
+        const result = addRowsToState(rows);
 
         if (rows.length === 0) {
           setStatus(`⚠️ ${img.name} processado, mas nenhum item foi reconhecido. Tente tirar a foto de novo (foco/luz).`);
+        } else if (result.duplicates > 0) {
+          setStatus(`✅ ${img.name} processado! ${result.added} item(ns) adicionado(s). ⚠️ ${result.duplicates} item(ns) duplicado(s) ignorado(s).`);
         } else {
-          setStatus(`✅ ${img.name} processado! ${rows.length} itens encontrados.`);
+          setStatus(`✅ ${img.name} processado! ${result.added} item(ns) adicionado(s).`);
         }
 
       } catch (e) {
@@ -837,7 +867,13 @@
           img.status = 'done';
           img.result = rows;
 
-          addRowsToState(rows);
+          const result = addRowsToState(rows);
+          img.addedCount = result.added;
+          img.duplicateCount = result.duplicates;
+
+          if (result.duplicates > 0) {
+            setStatus(`🔄 ${index + 1}/${pendingImages.length} · ${img.name} · ${result.added} adicionado(s) · ⚠️ ${result.duplicates} duplicado(s) ignorado(s)`);
+          }
         } catch (e) {
           console.error('Erro no OCR da imagem:', img.name, e);
           img.status = 'error';
@@ -861,13 +897,22 @@
         .filter(i => i.status === 'done')
         .reduce((sum, i) => sum + (i.result ? i.result.length : 0), 0);
       const imagesWithNoItems = imageQueue.filter(i => i.status === 'done' && (!i.result || i.result.length === 0)).length;
+      const totalAdded = imageQueue
+        .filter(i => i.status === 'done')
+        .reduce((sum, i) => sum + (Number(i.addedCount) || 0), 0);
+      const totalDuplicates = imageQueue
+        .filter(i => i.status === 'done')
+        .reduce((sum, i) => sum + (Number(i.duplicateCount) || 0), 0);
 
       if (totalItemsFound === 0 && doneCount > 0) {
         setStatus(`⚠️ ${doneCount} imagens processadas, mas nenhum item foi reconhecido. Tente fotos com mais luz/foco.`);
       } else if (imagesWithNoItems > 0) {
-        setStatus(`✅ ${totalItemsFound} itens encontrados. ⚠️ ${imagesWithNoItems} foto(s) sem nenhum item reconhecido.`);
+        const dupMsg = totalDuplicates > 0 ? ` ⚠️ ${totalDuplicates} item(ns) duplicado(s) ignorado(s).` : '';
+        setStatus(`✅ ${totalAdded} item(ns) adicionados. ${totalItemsFound} reconhecidos em ${doneCount} imagens.${dupMsg} ⚠️ ${imagesWithNoItems} foto(s) sem nenhum item reconhecido.`);
+      } else if (totalDuplicates > 0) {
+        setStatus(`✅ Processamento concluído! ${totalAdded} item(ns) adicionados. ⚠️ ${totalDuplicates} item(ns) duplicado(s) ignorado(s). ${errorCount} com erro.`);
       } else {
-        setStatus(`✅ Processamento concluído! ${totalItemsFound} itens encontrados em ${doneCount} imagens. ${errorCount} com erro.`);
+        setStatus(`✅ Processamento concluído! ${totalAdded} item(ns) adicionados em ${doneCount} imagens. ${errorCount} com erro.`);
       }
     }
 
