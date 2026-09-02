@@ -423,7 +423,7 @@
     async function addPdfToQueue(file) {
       if (window.pdfjsReady) await window.pdfjsReady;
       if (!window.pdfjsLib) {
-        throw new Error('O leitor de PDF não está disponível. Abra o PaleteFlow uma vez com Internet para concluir o cache offline.');
+        throw new Error('O leitor de PDF não conseguiu iniciar. Feche/reabra o PaleteFlow com Internet uma vez e tente selecionar o PDF novamente.');
       }
 
       const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
