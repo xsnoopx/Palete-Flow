@@ -431,29 +431,21 @@
 
       for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
         const page = await pdf.getPage(pageNumber);
-        const textContent = await page.getTextContent();
-        const extractedText = textContent.items.map(item => item.str || '').join('\n').trim();
-        const directRows = parseOCR(extractedText);
 
-        // PDFs com texto real não precisam passar pelo Tesseract.
-        if (directRows.length > 0) {
-          addQueueItem(`${file.name} · Página ${pageNumber}`, DOC_ICON, {
-            kind: 'pdf-text',
-            preExtractedRows: directRows
-          });
-          added++;
-          continue;
-        }
-
-        // PDF escaneado/imagem: renderiza a página e usa o mesmo OCR das fotos.
-        const viewport = page.getViewport({ scale: 1.5 });
+        // IMPORTANTE: PDF não usa mais a extração direta de texto como caminho
+        // principal. Muitos PDFs de etiquetas têm texto fragmentado em vários
+        // objetos/colunas; o getTextContent() pode alterar a ordem e fazer o
+        // parseOCR perder itens. Renderizamos a página como imagem e usamos
+        // exatamente o mesmo pipeline de OCR das fotos, que já é mais preciso.
+        // Escala maior preserva os caracteres pequenos das etiquetas.
+        const viewport = page.getViewport({ scale: 2.5 });
         const canvas = document.createElement('canvas');
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
         await page.render({ canvasContext: ctx, viewport }).promise;
 
-        addQueueItem(`${file.name} · Página ${pageNumber}`, canvas.toDataURL('image/jpeg', 0.88), {
+        addQueueItem(`${file.name} · Página ${pageNumber}`, canvas.toDataURL('image/jpeg', 0.92), {
           kind: 'pdf-image',
           preExtractedRows: null
         });
