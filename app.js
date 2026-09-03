@@ -33,6 +33,11 @@
 
     let state = loadState();
 
+    // Limpeza de compatibilidade: versões anteriores podiam ter salvo
+    // itens do CD2. Como este aplicativo opera no CD1, esses registros
+    // não devem continuar aparecendo depois da atualização.
+    let removedCD2OnLoad = 0;
+
     // ============================================================
     // FILA DE IMAGENS PARA PROCESSAMENTO EM LOTE
     // ============================================================
@@ -761,6 +766,76 @@
     // Se a mesma foto/etiqueta for reconhecida novamente, não criamos
     // outra linha para a mesma localização. A normalização também faz
     // 02-165-03, 02/165/03 e "02 - 165 - 03" serem considerados iguais.
+    // ============================================================
+    // FILTRO DE SETOR - CD1 / CD2
+    // Regra operacional:
+    //   Rua 1 até Rua 6  -> CD1
+    //   Rua acima de 6   -> CD2
+    //
+    // O PaleteFlow trabalha com a localização no formato
+    // Rua-Bloco-Nível (ex.: 02-165-03). Portanto, a PRIMEIRA parte
+    // numérica é a rua e determina o setor.
+    //
+    // Registros do CD2 não entram na lista do CD1. Eles são
+    // simplesmente ignorados no cadastro e contabilizados para que
+    // o usuário receba um aviso na tela.
+    // ============================================================
+    function getSectorFromLocation(location) {
+      // Usa a mesma regra de leitura da localização do restante do app:
+      // o PRIMEIRO número de Rua-Bloco-Nível é a rua.
+      const raw = String(location || '').trim();
+      // Aceita 07-165-03, 07/165/03 e variações com espaços.
+      const direct = raw.match(/^\s*(\d{1,3})\s*[-–/]\s*(\d{1,3})\s*[-–/]\s*(\d{1,3})/);
+      const parts = direct ? { street: direct[1], block: direct[2], level: direct[3] } : parseLocation(raw);
+      const street = Number.parseInt(parts?.street, 10);
+      if (!Number.isFinite(street)) return null;
+
+      return {
+        street,
+        sector: street > 6 ? 'CD2' : 'CD1'
+      };
+    }
+
+    // Remove do estado qualquer item antigo que pertença ao CD2.
+    // Isso é importante porque apenas bloquear novos OCRs não elimina
+    // registros que já tinham sido salvos por uma versão anterior.
+    function removeExistingCD2Items() {
+      const before = state.items.length;
+      state.items = state.items.filter(item => getSectorFromLocation(item.location)?.sector !== 'CD2');
+      removedCD2OnLoad = before - state.items.length;
+      if (removedCD2OnLoad > 0) {
+        state.items = sortItemsIntelligently(state.items);
+        localStorage.setItem(KEY, JSON.stringify(state));
+      }
+    }
+
+    // Mostra no próprio app, item por item, qual setor foi identificado.
+    // Isso deixa visível quando uma rua > 6 foi reconhecida e bloqueada.
+    function showSectorResults(rows, sourceName = '') {
+      const box = $('sectorResults');
+      if (!box) return;
+      const list = Array.isArray(rows) ? rows : [];
+      if (!list.length) {
+        box.innerHTML = '';
+        return;
+      }
+
+      const title = sourceName
+        ? `🔎 Setor identificado — ${esc(sourceName)}`
+        : '🔎 Setor identificado';
+
+      box.innerHTML = `<div class="sector-results-title">${title}</div>` + list.map((x, i) => {
+        const info = getSectorFromLocation(x.location);
+        const sector = info?.sector || 'NÃO IDENTIFICADO';
+        const cls = sector === 'CD2' ? 'cd2' : 'cd1';
+        const action = sector === 'CD2' ? '🚫 IGNORADO — outro setor' : '✅ CADASTRADO — CD1';
+        return `<div class="sector-result ${cls}">
+          <span class="location">${esc(x.location || 'Sem localização')}</span>
+          <span class="sector">${action}</span>
+        </div>`;
+      }).join('');
+    }
+
     function addRowsToState(rows) {
       const keys = new Set(
         state.items
@@ -770,15 +845,30 @@
 
       let added = 0;
       let duplicates = 0;
+      let otherSector = 0;
 
       (rows || []).forEach(x => {
+        const sectorInfo = getSectorFromLocation(x.location);
+
+        // Se a rua for maior que 6, pertence ao CD2.
+        // O aplicativo atual é tratado como CD1, então não cadastra.
+        if (sectorInfo?.sector === 'CD2') {
+          otherSector++;
+          return;
+        }
+
         const normalizedLocation = normalizeLocationKey(x.location);
         const key = normalizedLocation || (x.code || x.batch || x.no);
 
         if (!key) return;
 
         if (!keys.has(key)) {
-          state.items.push({ ...x, id: uid(), done: false });
+          state.items.push({
+            ...x,
+            id: uid(),
+            done: false,
+            sector: sectorInfo?.sector || 'CD1'
+          });
           keys.add(key);
           added++;
         } else {
@@ -787,8 +877,11 @@
       });
 
       if (added > 0 || duplicates > 0) applySortAndSave();
-      return { added, duplicates };
+      return { added, duplicates, otherSector };
     }
+
+    // Executa a migração uma vez ao carregar a aplicação.
+    removeExistingCD2Items();
 
     async function processQueueItem(img, onProgress) {
       if (Array.isArray(img.preExtractedRows)) {
@@ -822,13 +915,16 @@
         });
         img.status = 'done';
         img.result = rows;
+        showSectorResults(rows, img.name);
 
         const result = addRowsToState(rows);
 
         if (rows.length === 0) {
           setStatus(`⚠️ ${img.name} processado, mas nenhum item foi reconhecido. Tente tirar a foto de novo (foco/luz).`);
-        } else if (result.duplicates > 0) {
-          setStatus(`✅ ${img.name} processado! ${result.added} item(ns) adicionado(s). ⚠️ ${result.duplicates} item(ns) duplicado(s) ignorado(s).`);
+        } else if (result.otherSector > 0 || result.duplicates > 0) {
+          const sectorMsg = result.otherSector > 0 ? ` 🚫 ${result.otherSector} item(ns) do CD2 ignorado(s) (rua acima de 6).` : '';
+          const dupMsg = result.duplicates > 0 ? ` ⚠️ ${result.duplicates} duplicado(s) ignorado(s).` : '';
+          setStatus(`✅ ${img.name} processado! ${result.added} item(ns) adicionado(s).${dupMsg}${sectorMsg}`);
         } else {
           setStatus(`✅ ${img.name} processado! ${result.added} item(ns) adicionado(s).`);
         }
@@ -878,13 +974,17 @@
           });
           img.status = 'done';
           img.result = rows;
+          showSectorResults(rows, img.name);
 
           const result = addRowsToState(rows);
           img.addedCount = result.added;
           img.duplicateCount = result.duplicates;
+          img.otherSectorCount = result.otherSector;
 
-          if (result.duplicates > 0) {
-            setStatus(`🔄 ${index + 1}/${pendingImages.length} · ${img.name} · ${result.added} adicionado(s) · ⚠️ ${result.duplicates} duplicado(s) ignorado(s)`);
+          if (result.duplicates > 0 || result.otherSector > 0) {
+            const dupMsg = result.duplicates > 0 ? ` · ⚠️ ${result.duplicates} duplicado(s) ignorado(s)` : '';
+            const sectorMsg = result.otherSector > 0 ? ` · 🚫 ${result.otherSector} do CD2 ignorado(s)` : '';
+            setStatus(`🔄 ${index + 1}/${pendingImages.length} · ${img.name} · ${result.added} adicionado(s)${dupMsg}${sectorMsg}`);
           }
         } catch (e) {
           console.error('Erro no OCR da imagem:', img.name, e);
@@ -915,14 +1015,20 @@
       const totalDuplicates = imageQueue
         .filter(i => i.status === 'done')
         .reduce((sum, i) => sum + (Number(i.duplicateCount) || 0), 0);
+      const totalOtherSector = imageQueue
+        .filter(i => i.status === 'done')
+        .reduce((sum, i) => sum + (Number(i.otherSectorCount) || 0), 0);
 
       if (totalItemsFound === 0 && doneCount > 0) {
         setStatus(`⚠️ ${doneCount} imagens processadas, mas nenhum item foi reconhecido. Tente fotos com mais luz/foco.`);
       } else if (imagesWithNoItems > 0) {
         const dupMsg = totalDuplicates > 0 ? ` ⚠️ ${totalDuplicates} item(ns) duplicado(s) ignorado(s).` : '';
-        setStatus(`✅ ${totalAdded} item(ns) adicionados. ${totalItemsFound} reconhecidos em ${doneCount} imagens.${dupMsg} ⚠️ ${imagesWithNoItems} foto(s) sem nenhum item reconhecido.`);
-      } else if (totalDuplicates > 0) {
-        setStatus(`✅ Processamento concluído! ${totalAdded} item(ns) adicionados. ⚠️ ${totalDuplicates} item(ns) duplicado(s) ignorado(s). ${errorCount} com erro.`);
+        const sectorMsg = totalOtherSector > 0 ? ` 🚫 ${totalOtherSector} item(ns) do CD2 ignorado(s) (rua acima de 6).` : '';
+        setStatus(`✅ ${totalAdded} item(ns) adicionados. ${totalItemsFound} reconhecidos em ${doneCount} imagens.${dupMsg}${sectorMsg} ⚠️ ${imagesWithNoItems} foto(s) sem nenhum item reconhecido.`);
+      } else if (totalDuplicates > 0 || totalOtherSector > 0) {
+        const dupMsg = totalDuplicates > 0 ? ` ⚠️ ${totalDuplicates} item(ns) duplicado(s) ignorado(s).` : '';
+        const sectorMsg = totalOtherSector > 0 ? ` 🚫 ${totalOtherSector} item(ns) do CD2 ignorado(s) (rua acima de 6).` : '';
+        setStatus(`✅ Processamento concluído! ${totalAdded} item(ns) adicionados.${dupMsg}${sectorMsg} ${errorCount} com erro.`);
       } else {
         setStatus(`✅ Processamento concluído! ${totalAdded} item(ns) adicionados em ${doneCount} imagens. ${errorCount} com erro.`);
       }
