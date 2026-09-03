@@ -10,7 +10,7 @@
 // - Arquivos "pesados" do motor de OCR (tesseract/): raramente mudam, então
 //   usa cache primeiro (mais rápido e evita baixar ~18 MB de novo à toa).
 
-const CACHE_VERSION = 'paleteflow-v6-offline-docs';
+const CACHE_VERSION = 'paleteflow-v7-cd-filter';
 
 const ASSETS_TO_CACHE = [
   './',

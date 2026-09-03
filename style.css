@@ -2417,3 +2417,38 @@ button,
     padding: 16px 14px;
   }
 }
+
+
+/* ============================================================
+   RESULTADO DO SETOR NO OCR
+   ============================================================ */
+.sector-results {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.sector-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-input);
+  font-size: 14px;
+}
+.sector-result .location { font-weight: 700; letter-spacing: .3px; }
+.sector-result .sector { font-weight: 800; white-space: nowrap; }
+.sector-result.cd1 { border-color: rgba(34,197,94,.45); }
+.sector-result.cd1 .sector { color: var(--green-primary); }
+.sector-result.cd2 { border-color: rgba(239,68,68,.5); }
+.sector-result.cd2 .sector { color: var(--red); }
+.sector-results-title {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+  font-weight: 700;
+}

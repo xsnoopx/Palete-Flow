@@ -17,7 +17,7 @@ async function getSource(localUrl, remoteUrl) {
   const clone = remote.clone();
   const source = await remote.text();
   try {
-    const cache = await caches.open('paleteflow-v6-offline-docs');
+    const cache = await caches.open('paleteflow-v7-cd-filter');
     await cache.put(new Request(new URL(localUrl, location.href).href), clone);
   } catch (_) {}
   return source;
