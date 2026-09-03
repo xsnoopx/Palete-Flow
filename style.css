@@ -1227,8 +1227,8 @@
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
       margin-left: 32px;
       min-height: 110px;
+      opacity: 1;
       animation: slideInLeft 0.4s ease-out;
-      animation-fill-mode: both;
     }
 
     .item:nth-child(1) {
@@ -2344,5 +2344,76 @@ button,
   .upload {
     padding-left: 10px;
     padding-right: 10px;
+  }
+}
+
+/* ============================================================
+   MODO PAISAGEM (celular deitado)
+   Volta o item pro layout horizontal (em vez de empilhado), o que
+   deixa cada item bem mais baixo — assim cabem mais itens na tela
+   sem precisar rolar tanto, aproveitando a largura extra.
+   ============================================================ */
+@media (orientation: landscape) and (max-width: 1000px) {
+  .container {
+    max-width: 1000px;
+  }
+
+  .list {
+    max-height: 78vh;
+  }
+
+  .item {
+    grid-template-columns: 70px 1fr auto;
+    gap: 16px;
+    padding: 12px 20px;
+    min-height: auto;
+  }
+
+  .item-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: auto;
+  }
+
+  .btn-confirm {
+    flex: none;
+    padding: 10px 22px;
+    min-height: 40px;
+  }
+
+  .check {
+    width: 44px;
+    height: 44px;
+  }
+
+  .location-grid {
+    gap: 22px;
+  }
+
+  .location-group .loc-value {
+    font-size: 46px;
+  }
+
+  .location-group .loc-label {
+    font-size: 12px;
+  }
+
+  .item-no {
+    font-size: 14px;
+  }
+
+  .item-meta {
+    font-size: 13px;
+  }
+
+  /* Nas telas mais baixas (celular deitado), reduz um pouco o espaço
+     das seções de upload/status pra dar mais espaço pra lista */
+  .card {
+    padding: 16px 20px;
+  }
+
+  .upload {
+    padding: 16px 14px;
   }
 }
