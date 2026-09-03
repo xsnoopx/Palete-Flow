@@ -437,8 +437,20 @@
         // objetos/colunas; o getTextContent() pode alterar a ordem e fazer o
         // parseOCR perder itens. Renderizamos a página como imagem e usamos
         // exatamente o mesmo pipeline de OCR das fotos, que já é mais preciso.
-        // Escala maior preserva os caracteres pequenos das etiquetas.
-        const viewport = page.getViewport({ scale: 2.5 });
+        //
+        // A escala é calculada dinamicamente (não fixa) porque PDFs gerados
+        // por apps de scanner (Adobe Scan e afins) costumam declarar o
+        // tamanho "físico" da página bem menor do que a foto de alta
+        // resolução que embutem dentro — com uma escala fixa, a página
+        // renderizada saía minúscula e ilegível para o OCR nesses PDFs.
+        // Calculamos a escala pra sempre atingir ~2800px no lado maior,
+        // não importa o tamanho declarado da página.
+        const baseViewport = page.getViewport({ scale: 1 });
+        const TARGET_LONG_SIDE = 2800;
+        const longSide = Math.max(baseViewport.width, baseViewport.height);
+        let scale = TARGET_LONG_SIDE / longSide;
+        scale = Math.min(Math.max(scale, 1), 20); // nunca reduz abaixo do padrão, nem amplia de forma absurda
+        const viewport = page.getViewport({ scale });
         const canvas = document.createElement('canvas');
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
