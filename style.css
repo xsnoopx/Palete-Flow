@@ -2452,3 +2452,79 @@ button,
   margin-bottom: 2px;
   font-weight: 700;
 }
+
+/* ============================================================
+   LISTA EXPANSÍVEL — SEM ROLAGEM INTERNA
+   A lista cresce junto com o card e deixa a própria página fazer
+   a rolagem. Isso evita a "janelinha" com barra vertical interna
+   em celulares, especialmente Samsung/Android WebView.
+   ============================================================ */
+.list {
+  width: 100%;
+  max-width: none !important;
+  max-height: none !important;
+  height: auto !important;
+  min-height: 0;
+  overflow: visible !important;
+  overflow-y: visible !important;
+  overflow-x: visible !important;
+  padding-right: 0;
+  box-sizing: border-box;
+}
+
+/* O card da lista também pode crescer livremente conforme os itens. */
+.card:has(.list) {
+  height: auto !important;
+  min-height: 0;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/* Mantém os grupos de rua/bloco livres para ocupar toda a altura. */
+.list .street-group,
+.list .block-group,
+.list .item {
+  max-height: none;
+  overflow: visible;
+}
+
+/* No celular: aproveita toda a largura e elimina qualquer restrição
+   que possa recriar uma área de rolagem dentro da lista. */
+@media (max-width: 768px) {
+  .card:has(.list) {
+    width: 100%;
+    padding-bottom: 24px;
+  }
+
+  .list {
+    width: 100%;
+    gap: 14px;
+    max-height: none !important;
+    overflow: visible !important;
+    overflow-y: visible !important;
+    -webkit-overflow-scrolling: auto;
+  }
+}
+
+/* Celulares muito estreitos: ainda mais aproveitamento horizontal. */
+@media (max-width: 400px) {
+  .card:has(.list) {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .list {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+/* Paisagem: não voltar a criar a janela interna. */
+@media (orientation: landscape) and (max-width: 1000px) {
+  .list {
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    overflow-y: visible !important;
+  }
+}
